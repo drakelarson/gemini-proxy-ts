@@ -6,8 +6,10 @@ OpenAI-compatible API proxy for Google Gemini/Gemma models. Deploy to Vercel Edg
 
 - OpenAI-compatible `/v1/chat/completions` endpoint
 - Streaming and non-streaming support
+- **Tool/Function calling support**
 - Multimodal support (text + images)
 - System prompts supported
+- Gemma 4 thinking/reasoning support (`reasoning_content`)
 - Maps OpenAI parameters to Gemini equivalents
 
 ## Quick Deploy (Vercel)
@@ -64,6 +66,30 @@ curl -X POST https://your-proxy.vercel.app/v1/chat/completions \
   }'
 ```
 
+### Tool Calling
+```bash
+curl -X POST https://your-proxy.vercel.app/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-2.5-flash",
+    "messages": [{"role": "user", "content": "What is the weather in Tokyo?"}],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get weather for a city",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "city": {"type": "string"}
+          },
+          "required": ["city"]
+        }
+      }
+    }]
+  }'
+```
+
 ### With OpenAI SDK (Python)
 ```python
 from openai import OpenAI
@@ -84,11 +110,16 @@ print(response.choices[0].message.content)
 
 | OpenAI Model Name | Gemini Model |
 |-------------------|--------------|
-| `gemini-2.5-pro` | gemini-2.5-pro-preview-06-05 |
-| `gemini-2.5-flash` | gemini-2.5-flash-preview-05-20 |
-| `gemini-2.0-flash` | gemini-2.0-flash |
+| `gemini-2.5-pro` | gemini-2.5-pro |
+| `gemini-2.5-flash` | gemini-2.5-flash |
+| `gemini-2.5-flash-lite` | gemini-2.5-flash-lite |
+| `gemini-3-flash-preview` | gemini-3-flash-preview |
+| `gemini-3.1-pro-preview` | gemini-3.1-pro-preview |
 | `gemini-1.5-pro` | gemini-1.5-pro |
 | `gemini-1.5-flash` | gemini-1.5-flash |
+| `gemini-2.0-flash` | gemini-2.0-flash |
+| `gemma-4-31b-it` | gemma-4-31b-it |
+| `gemma-4-26b-a4b-it` | gemma-4-26b-a4b-it |
 | `gemma-3-27b-it` | gemma-3-27b-it |
 
 ## Parameter Mapping
@@ -106,8 +137,152 @@ print(response.choices[0].message.content)
 2. Create an API key
 3. Add to Vercel environment variables as `GEMINI_API_KEY`
 
+---
+
+## Gemini API Gotchas & Lessons Learned
+
+### 1. URL Format for API Key
+
+**Wrong:**
+```
+generateContent&key=API_KEY  ❌
+streamGenerateContent?alt=sse&key=API_KEY  ✓ (but tricky)
+```
+
+**Correct:**
+```
+generateContent?key=API_KEY  ✓
+streamGenerateContent?alt=sse&key=API_KEY  ✓
+```
+
+Non-streaming uses `?key=` (first query param). Streaming uses `&key=` after `alt=sse`.
+
+### 2. Streaming Requires `alt=sse`
+
+Gemini's `streamGenerateContent` returns a JSON array by default, not SSE. To get proper SSE format:
+
+```
+streamGenerateContent?alt=sse&key=API_KEY
+```
+
+Without `alt=sse`, the response is buffered as a JSON array, which breaks real-time streaming.
+
+### 3. Tool Schema Incompatibilities
+
+Gemini rejects several OpenAI-specific JSON schema fields:
+
+| Field | Reason |
+|-------|--------|
+| `additionalProperties` | Not supported |
+| `$schema` | Not supported |
+| `strict` | Not supported |
+| Empty string in `enum` arrays | `"enum[2]: cannot be empty"` |
+
+**Solution:** Strip these fields before sending to Gemini:
+
+```typescript
+function stripOpenAIFields(schema: any): any {
+  if (key === 'additionalProperties' || key === '$schema' || key === 'strict') continue
+  if (key === 'enum' && Array.isArray(value)) {
+    result[key] = value.filter(v => v !== '')  // Remove empty strings
+  }
+}
+```
+
+### 4. Gemma 4 Thinking/Reasoning
+
+Gemma 4 models (e.g., `gemma-4-31b-it`) return reasoning as separate parts with `thought: true`:
+
+```json
+{
+  "parts": [
+    {"text": "Let me think...", "thought": true},
+    {"text": "The answer is 42."}
+  ]
+}
+```
+
+**Solution:** Separate thoughts from content:
+- Thoughts → `reasoning_content` field
+- Regular text → `content` field
+
+This matches how reasoning models like DeepSeek-R1 work.
+
+### 5. Function Calling Format
+
+Gemini uses `functionCall` in response parts:
+
+```json
+{
+  "parts": [{
+    "functionCall": {
+      "name": "get_weather",
+      "args": {"city": "Tokyo"}
+    }
+  }]
+}
+```
+
+Convert to OpenAI's `tool_calls` format:
+
+```json
+{
+  "choices": [{
+    "message": {
+      "tool_calls": [{
+        "id": "call_xxx",
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "arguments": "{\"city\": \"Tokyo\"}"
+        }
+      }]
+    },
+    "finish_reason": "tool_calls"
+  }]
+}
+```
+
+### 6. Tool Response Format
+
+When returning tool results back to the model:
+
+**OpenAI:**
+```json
+{"role": "tool", "tool_call_id": "xxx", "name": "get_weather", "content": "{\"temp\": 25}"}
+```
+
+**Gemini:**
+```json
+{"role": "user", "parts": [{"functionResponse": {"name": "get_weather", "response": {"temp": 25}}}]}
+```
+
+### 7. Finish Reason for Tool Calls
+
+When model makes a tool call, `finish_reason` must be `"tool_calls"`, not `"stop"`:
+
+```json
+{"finish_reason": "tool_calls"}  ✓
+```
+
+### 8. Retry on 500 Errors
+
+Gemini API occasionally returns 500 errors. Implement retry logic:
+
+```typescript
+for (let attempt = 0; attempt < 3; attempt++) {
+  if (res.status === 500 && attempt < 2) {
+    await new Promise(r => setTimeout(r, 1000 * (attempt + 1)))
+    continue  // Retry with exponential backoff
+  }
+}
+```
+
+---
+
 ## Notes
 
 - Free tier: 1,500 requests/day, 15 RPM
 - Supports multimodal input (text + images via `image_url`)
 - System prompts become `systemInstruction` in Gemini
+- Tool calls supported on both Gemini and Gemma 4 models
