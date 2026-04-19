@@ -147,6 +147,20 @@ function convertMessages(openaiMessages: any[]): { contents: any[], systemInstru
   return { contents, systemInstruction }
 }
 
+// Strip OpenAI-specific fields from JSON schema that Gemini doesn't support
+function stripOpenAIFields(schema: any): any {
+  if (!schema || typeof schema !== 'object') return schema
+  if (Array.isArray(schema)) return schema.map(stripOpenAIFields)
+  
+  const result: any = {}
+  for (const [key, value] of Object.entries(schema)) {
+    // Skip OpenAI-specific fields that Gemini doesn't support
+    if (key === 'additionalProperties' || key === '$schema' || key === 'strict') continue
+    result[key] = stripOpenAIFields(value)
+  }
+  return result
+}
+
 // Convert OpenAI tools to Gemini function declarations
 function convertTools(openaiTools: any[]): any[] {
   if (!openaiTools || openaiTools.length === 0) return []
@@ -157,7 +171,7 @@ function convertTools(openaiTools: any[]): any[] {
       return {
         name: fn.name,
         description: fn.description || '',
-        parameters: fn.parameters || { type: 'object', properties: {} }
+        parameters: stripOpenAIFields(fn.parameters) || { type: 'object', properties: {} }
       }
     }
     return null
