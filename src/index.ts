@@ -315,10 +315,23 @@ app.post('/v1/chat/completions', async (c) => {
                       const parts = geminiChunk.candidates?.[0]?.content?.parts || []
                       
                       for (const part of parts) {
-                        // Skip thought parts (Gemma 4 reasoning)
-                        if (part.thought) continue
-                        
-                        if (part.text) {
+                        // Separate thoughts from content
+                        if (part.thought && part.text) {
+                          // Thinking/reasoning part - send in reasoning_content
+                          const thoughtChunk = {
+                            id: `chatcmpl-${Date.now()}`,
+                            object: 'chat.completion.chunk',
+                            created: Math.floor(Date.now() / 1000),
+                            model: requestedModel,
+                            choices: [{
+                              index: 0,
+                              delta: { reasoning_content: part.text },
+                              finish_reason: null
+                            }]
+                          }
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(thoughtChunk)}\n\n`))
+                        } else if (part.text) {
+                          // Normal content
                           const openaiChunk = {
                             id: `chatcmpl-${Date.now()}`,
                             object: 'chat.completion.chunk',
