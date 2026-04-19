@@ -468,7 +468,10 @@ app.post('/v1/chat/completions', async (c) => {
                         }
                       }
                     } catch (e) {
-                      console.error('[GEMINI-PROXY] Parse error:', e)
+                      // Log the problematic data for debugging
+                      console.error('[GEMINI-PROXY] Parse error for data:', data.substring(0, 100))
+                      // Skip non-JSON lines gracefully (Gemini sometimes returns non-JSON)
+                      // Don't crash the whole stream, just skip this chunk
                     }
                   }
                 }
