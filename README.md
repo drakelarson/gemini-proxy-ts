@@ -286,3 +286,7 @@ for (let attempt = 0; attempt < 3; attempt++) {
 - Supports multimodal input (text + images via `image_url`)
 - System prompts become `systemInstruction` in Gemini
 - Tool calls supported on both Gemini and Gemma 4 models
+
+## Array Wrapping
+
+When returning tool responses, ensure that the response is wrapped in an array if it is a single object. This is required by the Gemini API.
