@@ -217,9 +217,11 @@ app.post('/v1/chat/completions', async (c) => {
     // Choose endpoint based on stream flag
     // For streaming, use alt=sse to get SSE format from Gemini
     const endpoint = stream 
-      ? `streamGenerateContent?alt=sse` 
-      : 'generateContent'
-    const url = `${BASE_URL}/models/${geminiModel}:${endpoint}&key=${API_KEY}`
+      ? `streamGenerateContent?alt=sse&key=${API_KEY}` 
+      : `generateContent?key=${API_KEY}`
+    const url = `${BASE_URL}/models/${geminiModel}:${endpoint}`
+    
+    console.log(`[GEMINI-PROXY] → ${url.replace(API_KEY!, '[REDACTED]')}`)
     
     // Retry logic for 500 errors
     const MAX_RETRIES = 3
