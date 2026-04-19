@@ -215,8 +215,11 @@ app.post('/v1/chat/completions', async (c) => {
     console.log(`[GEMINI-PROXY] POST /v1/chat/completions → model=${geminiModel}, stream=${stream}`)
     
     // Choose endpoint based on stream flag
-    const endpoint = stream ? 'streamGenerateContent' : 'generateContent'
-    const url = `${BASE_URL}/models/${geminiModel}:${endpoint}?key=${API_KEY}`
+    // For streaming, use alt=sse to get SSE format from Gemini
+    const endpoint = stream 
+      ? `streamGenerateContent?alt=sse` 
+      : 'generateContent'
+    const url = `${BASE_URL}/models/${geminiModel}:${endpoint}&key=${API_KEY}`
     
     // Retry logic for 500 errors
     const MAX_RETRIES = 3
@@ -240,7 +243,7 @@ app.post('/v1/chat/completions', async (c) => {
       // Only retry on 500 (internal server error)
       if (res.status === 500 && attempt < MAX_RETRIES - 1) {
         console.log(`[GEMINI-PROXY] 500 error, retry ${attempt + 1}/${MAX_RETRIES} after ${RETRY_DELAY_MS * (attempt + 1)}ms`)
-        await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1))) // Exponential backoff
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)))
         continue
       }
       
@@ -259,63 +262,83 @@ app.post('/v1/chat/completions', async (c) => {
     }
     
     if (stream) {
-      // Gemini returns JSON array for streaming, not SSE
-      // Read full response and convert to SSE
-      const text = await response.text()
-      
-      // Parse the JSON array (Gemini returns array of responses)
-      let geminiResponses: any[]
-      try {
-        // Handle both array and single object responses
-        const parsed = JSON.parse(text)
-        geminiResponses = Array.isArray(parsed) ? parsed : [parsed]
-      } catch (e) {
-        console.error(`[GEMINI-PROXY] Parse error: ${e}`)
-        return c.json({ error: 'Failed to parse Gemini response' }, 502)
+      // Real streaming - Gemini returns SSE with alt=sse
+      // Read SSE stream and convert each Gemini event to OpenAI format
+      const reader = response.body?.getReader()
+      if (!reader) {
+        return c.json({ error: 'No response body' }, 502)
       }
       
-      // Create SSE stream
       const encoder = new TextEncoder()
-      let fullText = ''
+      const decoder = new TextDecoder()
+      let buffer = ''
       
-      const stream = new ReadableStream({
-        start(controller) {
-          for (const geminiResp of geminiResponses) {
-            const parts = geminiResp.candidates?.[0]?.content?.parts || []
-            for (const part of parts) {
-              if (part.text) {
-                fullText += part.text
-                const chunk = convertResponse(geminiResp, requestedModel, true)
-                chunk.choices[0].delta.content = part.text
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            try {
+              while (true) {
+                const { done, value } = await reader.read()
+                if (done) {
+                  // Send final chunk
+                  controller.enqueue(encoder.encode(`data: {"id":"chatcmpl-${Date.now()}","object":"chat.completion.chunk","created":${Math.floor(Date.now()/1000)},"model":"${requestedModel}","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n`))
+                  controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+                  break
+                }
+                
+                buffer += decoder.decode(value, { stream: true })
+                
+                // Process complete SSE events from buffer
+                const lines = buffer.split('\n')
+                buffer = lines.pop() || '' // Keep incomplete line in buffer
+                
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const data = line.slice(6).trim()
+                    if (!data || data === '[DONE]') continue
+                    
+                    try {
+                      const geminiChunk = JSON.parse(data)
+                      const parts = geminiChunk.candidates?.[0]?.content?.parts || []
+                      
+                      for (const part of parts) {
+                        if (part.text) {
+                          const openaiChunk = {
+                            id: `chatcmpl-${Date.now()}`,
+                            object: 'chat.completion.chunk',
+                            created: Math.floor(Date.now() / 1000),
+                            model: requestedModel,
+                            choices: [{
+                              index: 0,
+                              delta: { content: part.text },
+                              finish_reason: null
+                            }]
+                          }
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(openaiChunk)}\n\n`))
+                        }
+                      }
+                    } catch (e) {
+                      console.error('[GEMINI-PROXY] Parse error:', e)
+                    }
+                  }
+                }
               }
+              console.log(`[GEMINI-PROXY] ← ${Date.now() - startTime}ms (streamed)`)
+            } catch (e) {
+              console.error('[GEMINI-PROXY] Stream error:', e)
+              controller.close()
             }
           }
-          
-          // Send final chunk
-          const finalChunk = {
-            id: `chatcmpl-${Date.now()}`,
-            object: 'chat.completion.chunk',
-            created: Math.floor(Date.now() / 1000),
-            model: requestedModel,
-            choices: [{ index: 0, delta: {}, finish_reason: 'stop' }]
+        }),
+        {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
           }
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`))
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-          controller.close()
-          
-          console.log(`[GEMINI-PROXY] ← ${Date.now() - startTime}ms, ${fullText.length} chars`)
         }
-      })
-      
-      return new Response(stream, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-          'X-Accel-Buffering': 'no',
-        }
-      })
+      )
     } else {
       // Non-streaming response
       const geminiResp = await response.json()
