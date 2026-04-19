@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+bun.lock
+
+# Build outputs
+dist/
+
+# Environment (NEVER push keys!)
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
