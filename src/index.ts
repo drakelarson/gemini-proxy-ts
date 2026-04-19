@@ -20,19 +20,25 @@ if (!API_KEY) {
   console.error('[GEMINI-PROXY] ERROR: No API key! Set GEMINI_API_KEY env var.')
 }
 
-// Model name mapping (OpenAI-style to Gemini)
+// Model name mapping (OpenAI-style to Gemini API names)
 // Use stable model names for production
 const MODEL_MAP: Record<string, string> = {
+  // Gemini models
   'gemini-2.5-pro': 'gemini-2.5-pro',
   'gemini-2.5-flash': 'gemini-2.5-flash',
   'gemini-2.5-flash-lite': 'gemini-2.5-flash-lite',
   'gemini-3-flash-preview': 'gemini-3-flash-preview',
   'gemini-3.1-pro-preview': 'gemini-3.1-pro-preview',
   'gemini-3.1-flash-lite-preview': 'gemini-3.1-flash-lite-preview',
-  // Legacy aliases
+  // Legacy Gemini
   'gemini-1.5-pro': 'gemini-1.5-pro',
   'gemini-1.5-flash': 'gemini-1.5-flash',
   'gemini-2.0-flash': 'gemini-2.0-flash',
+  // Gemma 4 models
+  'gemma-4-31b-it': 'gemma-4-31b-it',
+  'gemma-4-26b-a4b-it': 'gemma-4-26b-a4b-it',
+  // Gemma 3
+  'gemma-3-27b-it': 'gemma-3-27b-it',
 }
 
 let totalRequests = 0
