@@ -220,7 +220,7 @@ app.post('/v1/chat/completions', async (c) => {
       return c.json({ 
         error: `Gemini API error: ${response.status}`,
         details: errorText
-      }, response.status)
+      }, response.status as 400 | 401 | 403 | 404 | 429 | 500 | 502 | 503)
     }
     
     if (stream) {
