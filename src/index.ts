@@ -354,6 +354,7 @@ app.post('/v1/chat/completions', async (c) => {
       const encoder = new TextEncoder()
       const decoder = new TextDecoder()
       let buffer = ''
+      let hadToolCall = false  // Track if we had tool calls
       
       return new Response(
         new ReadableStream({
@@ -362,8 +363,9 @@ app.post('/v1/chat/completions', async (c) => {
               while (true) {
                 const { done, value } = await reader.read()
                 if (done) {
-                  // Send final chunk
-                  controller.enqueue(encoder.encode(`data: {"id":"chatcmpl-${Date.now()}","object":"chat.completion.chunk","created":${Math.floor(Date.now()/1000)},"model":"${requestedModel}","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n`))
+                  // Send final chunk with correct finish_reason
+                  const finalFinishReason = hadToolCall ? 'tool_calls' : 'stop'
+                  controller.enqueue(encoder.encode(`data: {"id":"chatcmpl-${Date.now()}","object":"chat.completion.chunk","created":${Math.floor(Date.now()/1000)},"model":"${requestedModel}","choices":[{"index":0,"delta":{},"finish_reason":"${finalFinishReason}"}]}\n\n`))
                   controller.enqueue(encoder.encode('data: [DONE]\n\n'))
                   break
                 }
@@ -386,6 +388,7 @@ app.post('/v1/chat/completions', async (c) => {
                       for (const part of parts) {
                         // Handle function calls in streaming
                         if (part.functionCall) {
+                          hadToolCall = true  // Mark that we had a tool call
                           const toolCallChunk = {
                             id: `chatcmpl-${Date.now()}`,
                             object: 'chat.completion.chunk',
