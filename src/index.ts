@@ -212,20 +212,45 @@ app.post('/v1/chat/completions', async (c) => {
     const endpoint = stream ? 'streamGenerateContent' : 'generateContent'
     const url = `${BASE_URL}/models/${geminiModel}:${endpoint}?key=${API_KEY}`
     
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(geminiRequest)
-    })
+    // Retry logic for 500 errors
+    const MAX_RETRIES = 3
+    const RETRY_DELAY_MS = 1000
+    let response: Response
+    let lastError: { status: number; text: string } | null = null
     
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`[GEMINI-PROXY] Error ${response.status}: ${errorText}`)
-      totalErrors++
-      return c.json({ 
-        error: `Gemini API error: ${response.status}`,
-        details: errorText
-      }, response.status as 400 | 401 | 403 | 404 | 429 | 500 | 502 | 503)
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(geminiRequest)
+      })
+      
+      if (res.ok) {
+        response = res
+        break
+      }
+      
+      const errorText = await res.text()
+      
+      // Only retry on 500 (internal server error)
+      if (res.status === 500 && attempt < MAX_RETRIES - 1) {
+        console.log(`[GEMINI-PROXY] 500 error, retry ${attempt + 1}/${MAX_RETRIES} after ${RETRY_DELAY_MS}ms`)
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1))) // Exponential backoff
+        lastError = { status: res.status, text: errorText }
+        continue
+      }
+      
+      // Non-500 error or final attempt failed
+      if (!res.ok) {
+        console.error(`[GEMINI-PROXY] Error ${res.status}: ${errorText}`)
+        totalErrors++
+        return c.json({ 
+          error: `Gemini API error: ${res.status}`,
+          details: errorText
+        }, res.status as 400 | 401 | 403 | 404 | 429 | 500 | 502 | 503)
+      }
+      
+      response = res
     }
     
     if (stream) {
