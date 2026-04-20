@@ -139,7 +139,7 @@ print(response.choices[0].message.content)
 
 ---
 
-## Gemini API Gotchas & Lessons Learned
+## Gemini API Gotchas & Lessons Learned If You Want To Build Something Similar 
 
 ### 1. URL Format for API Key
 
