@@ -562,21 +562,9 @@ app.post('/v1/chat/completions', async (c) => {
                           // Don't send individual thought chunks - buffer for final emission
                           continue
                         } else if (part.text) {
-                          // Normal text chunk
-                          const content = part.text
-                          const chunk = {
-                            id: `chatcmpl-${Date.now()}`,
-                            object: 'chat.completion.chunk',
-                            created: Math.floor(Date.now() / 1000),
-                            model: requestedModel,
-                            choices: [{
-                              index: 0,
-                              delta: { content },
-                              finish_reason: null
-                            }]
-                          }
-                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
-                          fullContent += content
+                          // Normal text chunk - buffer it
+                          fullContent += part.text
+                          // Don't send individual chunks - buffer for final emission
                         }
                       }
                     } catch (e) {
