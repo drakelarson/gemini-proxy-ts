@@ -465,6 +465,7 @@ app.post('/v1/chat/completions', async (c) => {
                       const parts = geminiChunk.candidates?.[0]?.content?.parts || []
                       
                       for (const part of parts) {
+                        console.log(`[GEMINI-PROXY] DEBUG: Streaming part: ${JSON.stringify(part)}`)
                         if (part.functionCall) {
                           hadToolCall = true
                           const toolCallChunk = {
