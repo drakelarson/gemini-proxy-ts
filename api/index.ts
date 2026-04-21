@@ -41,6 +41,8 @@ const MODEL_MAP: Record<string, string> = {
   'gemma-3-27b-it': 'gemma-3-27b-it',
 }
 
+const DEFAULT_MODEL = 'gemini-2.5-flash'
+
 // Heartbeat for keep-alive during streaming
 const HEARTBEAT_INTERVAL_MS = 2000
 const HEARTBEAT_BYTE = ': keep-alive\n\n'
@@ -305,7 +307,7 @@ app.post('/v1/chat/completions', async (c) => {
     const { model: requestedModel, messages, stream = false, ...rest } = body
     
     // Map model name
-    const geminiModel = MODEL_MAP[requestedModel] || requestedModel
+    const geminiModel = MODEL_MAP[requestedModel] || DEFAULT_MODEL
     
     // Convert messages
     const { contents, systemInstruction } = convertMessages(messages)
@@ -345,12 +347,11 @@ app.post('/v1/chat/completions', async (c) => {
     console.log(`[GEMINI-PROXY] POST /v1/chat/completions → model=${geminiModel}, stream=${stream}`)
     
     // Choose endpoint based on stream flag
-    // DON'T use alt=sse - it changes the format and can cause issues
-    // Use default streaming which returns JSON arrays that we process correctly
+    // For streaming, use alt=sse to get SSE format from Gemini
     const endpoint = stream 
-      ? 'streamGenerateContent' 
-      : 'generateContent'
-    const url = `${BASE_URL}/models/${geminiModel}:${endpoint}?key=${API_KEY}`
+      ? `streamGenerateContent?alt=sse&key=${API_KEY}` 
+      : `generateContent?key=${API_KEY}`
+    const url = `${BASE_URL}/models/${geminiModel}:${endpoint}`
     
     console.log(`[GEMINI-PROXY] → ${url.replace(API_KEY!, '[REDACTED]')}`)
     
@@ -395,7 +396,7 @@ app.post('/v1/chat/completions', async (c) => {
     }
     
     if (stream) {
-      // Real streaming - Gemini returns NDJSON (one JSON object per line)
+      // Real streaming - Gemini returns SSE with alt=sse
       // Read SSE stream and convert each Gemini event to OpenAI format
       const reader = response.body?.getReader()
       if (!reader) {
@@ -406,10 +407,6 @@ app.post('/v1/chat/completions', async (c) => {
       const decoder = new TextDecoder()
       let buffer = ''
       let hadToolCall = false
-      
-      // Buffer for incomplete tool call arguments
-      let pendingToolCall: any = null
-      let pendingArgsBuffer = ''
       
       return new Response(
         new ReadableStream({
@@ -453,39 +450,23 @@ app.post('/v1/chat/completions', async (c) => {
                 lastActivity = Date.now()
                 buffer += decoder.decode(value, { stream: true })
                 
-                // Gemini default streaming returns NDJSON (one JSON object per line)
-                // NOT SSE format - no "data: " prefix
                 const lines = buffer.split('\n')
                 buffer = lines.pop() || ''
                 
                 for (const line of lines) {
-                  const trimmed = line.trim()
-                  if (!trimmed || trimmed === '[DONE]') continue
-                  
-                  lastActivity = Date.now()
-                  
-                  try {
-                    // Each line is a complete JSON object from Gemini
-                    const geminiChunk = JSON.parse(trimmed)
+                  if (line.startsWith('data: ')) {
+                    const data = line.slice(6).trim()
+                    if (!data || data === '[DONE]') continue
+                    
+                    lastActivity = Date.now()
+                    
+                    try {
+                      const geminiChunk = JSON.parse(data)
                       const parts = geminiChunk.candidates?.[0]?.content?.parts || []
                       
                       for (const part of parts) {
                         if (part.functionCall) {
                           hadToolCall = true
-                          // Gemma 4 may emit malformed JSON in streaming - validate args
-                          let args = part.functionCall.args || {}
-                          let argsStr = ''
-                          try {
-                            argsStr = JSON.stringify(args)
-                            // Validate it's parseable
-                            JSON.parse(argsStr)
-                          } catch {
-                            // Invalid JSON from Gemma streaming - skip this malformed chunk
-                            // The complete valid chunk will come in a subsequent event
-                            console.warn('[GEMINI-PROXY] Skipping malformed tool call args, will retry on next chunk')
-                            continue
-                          }
-                          
                           const toolCallChunk = {
                             id: `chatcmpl-${Date.now()}`,
                             object: 'chat.completion.chunk',
@@ -500,7 +481,7 @@ app.post('/v1/chat/completions', async (c) => {
                                   type: 'function',
                                   function: {
                                     name: part.functionCall.name,
-                                    arguments: argsStr
+                                    arguments: JSON.stringify(part.functionCall.args || {})
                                   }
                                 }]
                               },
