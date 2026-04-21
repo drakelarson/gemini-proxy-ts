@@ -42,7 +42,7 @@ const MODEL_MAP: Record<string, string> = {
 }
 
 // Heartbeat for keep-alive during streaming
-const HEARTBEAT_INTERVAL_MS = 3000
+const HEARTBEAT_INTERVAL_MS = 2000
 const HEARTBEAT_BYTE = ': keep-alive\n\n'
 
 let totalRequests = 0
