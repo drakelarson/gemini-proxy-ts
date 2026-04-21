@@ -488,18 +488,8 @@ app.post('/v1/chat/completions', async (c) => {
                           }
                           controller.enqueue(encoder.encode(`data: ${JSON.stringify(toolCallChunk)}\n\n`))
                         } else if (part.thought && part.text) {
-                          const thoughtChunk = {
-                            id: `chatcmpl-${Date.now()}`,
-                            object: 'chat.completion.chunk',
-                            created: Math.floor(Date.now() / 1000),
-                            model: requestedModel,
-                            choices: [{
-                              index: 0,
-                              delta: { reasoning_content: part.text },
-                              finish_reason: null
-                            }]
-                          }
-                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(thoughtChunk)}\n\n`))
+                          // Skip thought parts entirely in streaming (non-standard field can confuse parsers)
+                          // Only send actual content and tool calls
                         } else if (part.text) {
                           const openaiChunk = {
                             id: `chatcmpl-${Date.now()}`,
