@@ -488,8 +488,34 @@ app.post('/v1/chat/completions', async (c) => {
                           }
                           controller.enqueue(encoder.encode(`data: ${JSON.stringify(toolCallChunk)}\n\n`))
                         } else if (part.thought && part.text) {
-                          // Skip thought parts entirely in streaming (non-standard field can confuse parsers)
-                          // Only send actual content and tool calls
+                          // Thought content - include as reasoning_content in delta
+                          const thoughtChunk = {
+                            id: `chatcmpl-${Date.now()}`,
+                            object: 'chat.completion.chunk',
+                            created: Math.floor(Date.now() / 1000),
+                            model: requestedModel,
+                            choices: [{
+                              index: 0,
+                              delta: { reasoning_content: part.text },
+                              finish_reason: null
+                            }]
+                          }
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(thoughtChunk)}\n\n`))
+                        } else if (part.text && part.text.includes('THOUGHT:')) {
+                          // Gemini 2.5 may emit THOUGHT: prefix in text - strip it and send as reasoning_content
+                          const thoughtText = part.text.replace(/THOUGHT:\s*/gi, '')
+                          const thoughtChunk = {
+                            id: `chatcmpl-${Date.now()}`,
+                            object: 'chat.completion.chunk',
+                            created: Math.floor(Date.now() / 1000),
+                            model: requestedModel,
+                            choices: [{
+                              index: 0,
+                              delta: { reasoning_content: thoughtText },
+                              finish_reason: null
+                            }]
+                          }
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(thoughtChunk)}\n\n`))
                         } else if (part.text) {
                           const openaiChunk = {
                             id: `chatcmpl-${Date.now()}`,
