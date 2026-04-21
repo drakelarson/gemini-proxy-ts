@@ -417,10 +417,9 @@ app.post('/v1/chat/completions', async (c) => {
             const startHeartbeat = () => {
               heartbeatTimer = setInterval(() => {
                 const now = Date.now()
-                // Send keep-alive if no activity for 3 seconds
+                // Send empty data event to keep TCP alive without breaking OpenAI parsers
                 if (now - lastActivity >= HEARTBEAT_INTERVAL_MS) {
-                  // Reset idle timer but DO NOT send to client
-                  // This prevents Vercel/network timeouts WITHOUT sending garbage to OpenAI clients
+                  controller.enqueue(encoder.encode('data: \n\n'))
                   lastActivity = now
                 }
               }, HEARTBEAT_INTERVAL_MS)
