@@ -427,6 +427,8 @@ app.post('/v1/chat/completions', async (c) => {
             // Track last activity time for keep-alive heartbeats
             let lastActivity = Date.now()
             let heartbeatTimer: any = null
+            let thoughtBuffer: string[] = []
+            let fullContent = ''
             
             // Start heartbeat to prevent connection drops
             const startHeartbeat = () => {
@@ -455,6 +457,23 @@ app.post('/v1/chat/completions', async (c) => {
                 if (done) {
                   stopHeartbeat()
                   const finalFinishReason = hadToolCall ? 'tool_calls' : 'stop'
+                  
+                  // Flush buffered thoughts as reasoning_content BEFORE done chunk
+                  if (thoughtBuffer.length > 0) {
+                    const allThoughts = thoughtBuffer.join('')
+                    const thoughtChunk = {
+                      id: `chatcmpl-${Date.now()}`,
+                      object: 'chat.completion.chunk',
+                      created: Math.floor(Date.now() / 1000),
+                      model: requestedModel,
+                      choices: [{
+                        index: 0,
+                        delta: { reasoning_content: allThoughts },
+                        finish_reason: null
+                      }]
+                    }
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(thoughtChunk)}\n\n`))
+                  }
                   
                   // Construct a minimal "done" chunk. 
                   // Some clients fail if delta is empty.
@@ -523,48 +542,26 @@ app.post('/v1/chat/completions', async (c) => {
                           }
                           controller.enqueue(encoder.encode(`data: ${JSON.stringify(toolCallChunk)}\n\n`))
                         } else if (part.thought && part.text) {
-                          // Gemma thought content - prepend tag so client can identify it
-                          // (don't use reasoning_content as it's not in standard OpenAI chunk schema)
-                          const thoughtChunk = {
-                            id: `chatcmpl-${Date.now()}`,
-                            object: 'chat.completion.chunk',
-                            created: Math.floor(Date.now() / 1000),
-                            model: requestedModel,
-                            choices: [{
-                              index: 0,
-                              delta: { content: `[Gemma Thought]\n${part.text}` },
-                              finish_reason: null
-                            }]
-                          }
-                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(thoughtChunk)}\n\n`))
-                        } else if (part.text && part.text.includes('THOUGHT:')) {
-                          // Gemini 2.5 may emit THOUGHT: prefix in text - strip it and send as reasoning_content
-                          const thoughtText = part.text.replace(/THOUGHT:\s*/gi, '')
-                          const thoughtChunk = {
-                            id: `chatcmpl-${Date.now()}`,
-                            object: 'chat.completion.chunk',
-                            created: Math.floor(Date.now() / 1000),
-                            model: requestedModel,
-                            choices: [{
-                              index: 0,
-                              delta: { reasoning_content: thoughtText },
-                              finish_reason: null
-                            }]
-                          }
-                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(thoughtChunk)}\n\n`))
+                          // Buffer thought chunks - collect them, send at the end as reasoning_content
+                          thoughtBuffer.push(part.text)
+                          // Don't send individual thought chunks - buffer for final emission
+                          continue
                         } else if (part.text) {
-                          const openaiChunk = {
+                          // Normal text chunk
+                          const content = part.text
+                          const chunk = {
                             id: `chatcmpl-${Date.now()}`,
                             object: 'chat.completion.chunk',
                             created: Math.floor(Date.now() / 1000),
                             model: requestedModel,
                             choices: [{
                               index: 0,
-                              delta: { content: part.text },
+                              delta: { content },
                               finish_reason: null
                             }]
                           }
-                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(openaiChunk)}\n\n`))
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+                          fullContent += content
                         }
                       }
                     } catch (e) {
