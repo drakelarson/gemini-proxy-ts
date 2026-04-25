@@ -544,7 +544,7 @@ app.post('/v1/chat/completions', async (c) => {
                           }
                           controller.enqueue(encoder.encode(`data: ${JSON.stringify(toolCallChunk)}\n\n`))
                         } else if (part.thought && part.text) {
-                          // Send thought as thinking tag block for UI recognition
+                          // Send thought as delta.reasoning_content for UI recognition
                           const thoughtChunk = {
                             id: `chatcmpl-${Date.now()}`,
                             object: 'chat.completion.chunk',
@@ -552,7 +552,7 @@ app.post('/v1/chat/completions', async (c) => {
                             model: geminiModel,
                             choices: [{
                               index: 0,
-                              delta: { content: `<thinking>${part.text}</thinking>` },
+                              delta: { reasoning_content: part.text },
                               finish_reason: null
                             }]
                           }
