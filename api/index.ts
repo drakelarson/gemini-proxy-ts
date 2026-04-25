@@ -100,6 +100,10 @@ function convertMessages(openaiMessages: any[]): { contents: any[], systemInstru
     
     // Handle tool calls in assistant message
     if (role === 'assistant' && msg.tool_calls) {
+      // EXCEPTION: Keep reasoning_content for tool calls per Gemma docs
+      if (msg.reasoning_content) {
+        parts.push({ thought: true, text: msg.reasoning_content })
+      }
       for (const tc of msg.tool_calls) {
         parts.push({
           functionCall: {
@@ -122,15 +126,14 @@ function convertMessages(openaiMessages: any[]): { contents: any[], systemInstru
           }
         })
       }
-      // Add content if present (ignore reasoning_content - Gemini generates thoughts fresh)
+      // Add content if present
       if (msg.content && typeof msg.content === 'string' && msg.content.trim()) {
         parts.push({ text: msg.content })
       }
     }
-    // Handle assistant message without tool calls (ignore reasoning_content)
+    // Handle assistant message without tool calls (strip reasoning_content)
     else if (role === 'assistant') {
-      // reasoning_content is ignored - Gemini generates thoughts fresh each turn
-      // Only send actual content to Gemini
+      // Standard multi-turn: strip reasoning_content - Gemini generates thoughts fresh each turn
       if (msg.content && typeof msg.content === 'string' && msg.content.trim()) {
         parts.push({ text: msg.content })
       }
