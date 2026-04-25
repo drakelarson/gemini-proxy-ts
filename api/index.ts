@@ -158,6 +158,10 @@ function convertMessages(openaiMessages: any[]): { contents: any[], systemInstru
       if (Array.isArray(responseContent)) {
         responseContent = { result: responseContent }
       }
+      // If responseContent is a primitive (number, string, boolean), wrap in object
+      if (typeof responseContent !== 'object' || responseContent === null) {
+        responseContent = { result: responseContent }
+      }
       
       parts.push({
         functionResponse: {
