@@ -13,7 +13,7 @@ import { cors } from 'hono/cors'
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
 // API key from environment variable
-// Set GEMINI_API_KEY in Vercel Environment Variables
+// Set GEMINI_API_KEY in Vercel pEnvironment Variables
 const API_KEY = process.env.GEMINI_API_KEY
 
 if (!API_KEY) {
@@ -367,6 +367,9 @@ app.post('/v1/chat/completions', async (c) => {
     }
     if (rest.top_p !== undefined) {
       geminiRequest.generationConfig.topP = rest.top_p
+    }
+    if (rest.top_k !== undefined) {
+      geminiRequest.generationConfig.topK = rest.top_k
     }
     if (rest.max_tokens !== undefined) {
       geminiRequest.generationConfig.maxOutputTokens = rest.max_tokens
