@@ -362,9 +362,8 @@ app.post('/v1/chat/completions', async (c) => {
     }
     
     // Map OpenAI params to Gemini params
-    if (rest.temperature !== undefined) {
-      geminiRequest.generationConfig.temperature = rest.temperature
-    }
+    // Default temperature to 1.5 for every request
+    geminiRequest.generationConfig.temperature = rest.temperature !== undefined ? rest.temperature : 1.5
     if (rest.top_p !== undefined) {
       geminiRequest.generationConfig.topP = rest.top_p
     }
