@@ -427,7 +427,6 @@ app.post('/v1/chat/completions', async (c) => {
             // Track last activity time for keep-alive heartbeats
             let lastActivity = Date.now()
             let heartbeatTimer: any = null
-            let thoughtBuffer: string[] = []
             let fullContent = ''
             
             // Start heartbeat to prevent connection drops
@@ -458,22 +457,6 @@ app.post('/v1/chat/completions', async (c) => {
                   stopHeartbeat()
                   const finalFinishReason = hadToolCall ? 'tool_calls' : 'stop'
                   
-                  // Flush thought buffer as content (not reasoning_content - BYOK clients may not support it)
-                  const thoughtText = thoughtBuffer.join('')
-                  if (thoughtText) {
-                    const thoughtChunk = {
-                      id: `chatcmpl-${Date.now()}`,
-                      object: 'chat.completion.chunk',
-                      created: Math.floor(Date.now() / 1000),
-                      model: requestedModel,
-                      choices: [{
-                        index: 0,
-                        delta: { content: `\n\n[Thoughts]\n${thoughtText}` },
-                        finish_reason: null
-                      }]
-                    }
-                    controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(thoughtChunk)}\n\n`))
-                  }
                   // Send final content buffer
                   if (fullContent) {
                     const contentChunk = {
