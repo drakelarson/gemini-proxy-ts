@@ -458,6 +458,7 @@ app.post('/v1/chat/completions', async (c) => {
       const decoder = new TextDecoder()
       let buffer = ''
       let hadToolCall = false
+      let thoughtBuffer: string[] = []
       let toolCallIndex = 0  // Track tool call count for proper delta indexing
       
       return new Response(
@@ -495,22 +496,6 @@ app.post('/v1/chat/completions', async (c) => {
                 if (done) {
                   stopHeartbeat()
                   const finalFinishReason = hadToolCall ? 'tool_calls' : 'stop'
-                  
-                  // Send final content buffer
-                  if (fullContent) {
-                    const contentChunk = {
-                      id: `chatcmpl-${Date.now()}`,
-                      object: 'chat.completion.chunk',
-                      created: Math.floor(Date.now() / 1000),
-                      model: requestedModel,
-                      choices: [{
-                        index: 0,
-                        delta: { content: fullContent },
-                        finish_reason: null
-                      }]
-                    }
-                    controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(contentChunk)}\n\n`))
-                  }
                   
                   // Construct a minimal "done" chunk. 
                   // Some clients fail if delta is empty.
@@ -595,9 +580,19 @@ app.post('/v1/chat/completions', async (c) => {
                           controller.enqueue(encoder.encode(`data: ${JSON.stringify(thoughtChunk)}\n\n`))
                           continue
                         } else if (part.text) {
-                          // Buffer content text
-                          fullContent += part.text
-                          // Don't send individual chunks - buffer for final emission
+                          // Stream content chunks immediately instead
+                          const contentChunk = {
+                            id: `chatcmpl-${Date.now()}`,
+                            object: 'chat.completion.chunk',
+                            created: Math.floor(Date.now() / 1000),
+                            model: requestedModel,
+                            choices: [{
+                              index: 0,
+                              delta: { content: part.text },
+                              finish_reason: null
+                            }]
+                          }
+                          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(contentChunk)}\n\n`))
                         }
                       }
                     } catch (e) {
