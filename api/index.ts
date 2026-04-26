@@ -440,6 +440,7 @@ app.post('/v1/chat/completions', async (c) => {
       const decoder = new TextDecoder()
       let buffer = ''
       let hadToolCall = false
+      let toolCallIndex = 0  // Track tool call count for proper delta indexing
       
       return new Response(
         new ReadableStream({
@@ -546,7 +547,7 @@ app.post('/v1/chat/completions', async (c) => {
                               index: 0,
                               delta: {
                                 tool_calls: [{
-                                  index: 0,
+                                  index: toolCallIndex++,
                                   id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                                   type: 'function',
                                   function: {
