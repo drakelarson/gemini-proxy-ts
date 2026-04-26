@@ -134,7 +134,8 @@ function convertMessages(openaiMessages: any[]): { contents: any[], systemInstru
                 }
                 return {}
               }
-            })()
+            })(),
+            thoughtSignature: tc.extra_content?.google?.thoughtSignature
           }
         })
       }
@@ -280,14 +281,23 @@ function convertResponse(geminiResp: any, model: string, stream: boolean): any {
     } else if (part.functionCall) {
       // Function call - convert to OpenAI tool_calls format
       // Use counter + timestamp + random for truly unique IDs
-      toolCalls.push({
+      const tc: any = {
         id: part.functionCall.id || `call_${Date.now()}_${toolCallIdx}_${Math.random().toString(36).substr(2, 9)}`,
         type: 'function',
         function: {
           name: part.functionCall.name,
           arguments: JSON.stringify(part.functionCall.args || {})
         }
-      })
+      }
+      // Add thoughtSignature for multi-turn function calling
+      if (part.functionCall.thoughtSignature) {
+        tc.extra_content = {
+          google: {
+            thoughtSignature: part.functionCall.thoughtSignature
+          }
+        }
+      }
+      toolCalls.push(tc)
       toolCallIdx++
     } else if (part.text) {
       text += part.text
@@ -556,7 +566,14 @@ app.post('/v1/chat/completions', async (c) => {
                                   function: {
                                     name: part.functionCall.name,
                                     arguments: JSON.stringify(part.functionCall.args || {})
-                                  }
+                                  },
+                                  ...(part.functionCall.thoughtSignature && {
+                                    extra_content: {
+                                      google: {
+                                        thoughtSignature: part.functionCall.thoughtSignature
+                                      }
+                                    }
+                                  })
                                 }]
                               },
                               finish_reason: null
