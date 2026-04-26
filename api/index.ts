@@ -135,7 +135,9 @@ function convertMessages(openaiMessages: any[]): { contents: any[], systemInstru
                 return {}
               }
             })(),
-            thoughtSignature: tc.extra_content?.google?.thoughtSignature
+            // Use provided signature or dummy to pass Gemini validation
+            // Per docs: "skip_thought_signature_validator" bypasses validation
+            thoughtSignature: tc.extra_content?.google?.thoughtSignature || "skip_thought_signature_validator"
           }
         })
       }
@@ -289,14 +291,7 @@ function convertResponse(geminiResp: any, model: string, stream: boolean): any {
           arguments: JSON.stringify(part.functionCall.args || {})
         }
       }
-      // Add thoughtSignature for multi-turn function calling
-      if (part.functionCall.thoughtSignature) {
-        tc.extra_content = {
-          google: {
-            thoughtSignature: part.functionCall.thoughtSignature
-          }
-        }
-      }
+
       toolCalls.push(tc)
       toolCallIdx++
     } else if (part.text) {
@@ -567,13 +562,7 @@ app.post('/v1/chat/completions', async (c) => {
                                     name: part.functionCall.name,
                                     arguments: JSON.stringify(part.functionCall.args || {})
                                   },
-                                  ...(part.functionCall.thoughtSignature && {
-                                    extra_content: {
-                                      google: {
-                                        thoughtSignature: part.functionCall.thoughtSignature
-                                      }
-                                    }
-                                  })
+
                                 }]
                               },
                               finish_reason: null
