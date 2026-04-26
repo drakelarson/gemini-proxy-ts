@@ -461,6 +461,7 @@ app.post('/v1/chat/completions', async (c) => {
       const decoder = new TextDecoder()
       let buffer = ''
       let hadToolCall = false
+      let emittedFinishChunk = false
       let thoughtBuffer: string[] = []
       let toolCallIndex = 0  // Track tool call count for proper delta indexing
       
@@ -498,22 +499,25 @@ app.post('/v1/chat/completions', async (c) => {
                 const { done, value } = await reader.read()
                 if (done) {
                   stopHeartbeat()
-                  const finalFinishReason = hadToolCall ? 'tool_calls' : 'stop'
-                  
-                  // Construct a minimal "done" chunk. 
-                  // Some clients fail if delta is empty.
-                  const doneChunk = {
-                    id: `chatcmpl-${Date.now()}`,
-                    object: 'chat.completion.chunk',
-                    created: Math.floor(Date.now()/1000),
-                    model: requestedModel,
-                    choices: [{
-                      index: 0,
-                      delta: {}, 
-                      finish_reason: finalFinishReason
-                    }]
+                  // Skip final chunk if we already emitted one during streaming
+                  if (!emittedFinishChunk) {
+                    const finalFinishReason = hadToolCall ? 'tool_calls' : 'stop'
+                    
+                    // Construct a minimal "done" chunk. 
+                    // Some clients fail if delta is empty.
+                    const doneChunk = {
+                      id: `chatcmpl-${Date.now()}`,
+                      object: 'chat.completion.chunk',
+                      created: Math.floor(Date.now()/1000),
+                      model: requestedModel,
+                      choices: [{
+                        index: 0,
+                        delta: {}, 
+                        finish_reason: finalFinishReason
+                      }]
+                    }
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(doneChunk)}\n\n`))
                   }
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(doneChunk)}\n\n`))
                   controller.enqueue(encoder.encode('data: [DONE]\n\n'))
                   break
                 }
@@ -601,6 +605,26 @@ app.post('/v1/chat/completions', async (c) => {
                           }
                           controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(contentChunk)}\n\n`))
                         }
+                      }
+                      
+                      // Check for finishReason in this Gemini chunk
+                      const chunkFinishReason = geminiChunk.candidates?.[0]?.finishReason
+                      if (chunkFinishReason && hadToolCall && !emittedFinishChunk) {
+                        // Emit final chunk with correct finish_reason
+                        const finishChunk = {
+                          id: `chatcmpl-${Date.now()}`,
+                          object: 'chat.completion.chunk',
+                          created: Math.floor(Date.now() / 1000),
+                          model: requestedModel,
+                          choices: [{
+                            index: 0,
+                            delta: {},
+                            finish_reason: 'tool_calls'
+                          }]
+                        }
+                        console.error(`[GEMINI-PROXY] DEBUG: Emitting finish chunk with tool_calls`)
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(finishChunk)}\n\n`))
+                        emittedFinishChunk = true
                       }
                     } catch (e) {
                       console.error('[GEMINI-PROXY] Parse error for data:', data.substring(0, 100))
