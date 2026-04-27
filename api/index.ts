@@ -112,7 +112,8 @@ function convertMessages(openaiMessages: any[]): { contents: any[], systemInstru
     
     // Handle tool calls in assistant message
     if (role === 'assistant' && msg.tool_calls) {
-      // EXCEPTION: Keep reasoning_content for tool calls per Gemma docs
+      // Model sees thoughts during current turn via thinkingLevel: "high"
+      // If client sends back reasoning_content (future feature), model would remember across turns
       if (msg.reasoning_content) {
         parts.push({ thought: true, text: msg.reasoning_content })
       }
