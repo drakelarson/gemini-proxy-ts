@@ -689,11 +689,17 @@ app.post('/v1/chat/completions', async (c) => {
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))
                         console.error('[GEMMA-PROXY] DEBUG: Emitted [DONE] after tool_calls finish')
                         emittedDone = true
+                        return  // Stop processing after [DONE]
                       }
                     } catch (e) {
                       console.error('[GEMMA-PROXY] Parse error for data:', data.substring(0, 100))
                     }
                   }
+                }
+                // If we emitted [DONE], stop processing further chunks
+                if (emittedDone) {
+                  console.error('[GEMMA-PROXY] DEBUG: Breaking loop after [DONE]')
+                  break
                 }
               }
               console.log(`[GEMMA-PROXY] ← ${Date.now() - startTime}ms (streamed)`)
