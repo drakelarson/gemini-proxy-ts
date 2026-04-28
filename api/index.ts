@@ -575,9 +575,24 @@ app.post('/v1/chat/completions', async (c) => {
                           console.error(`[GEMMA-PROXY] DEBUG: Enqueueing tool call chunk: ${JSON.stringify(toolCallChunk)}`)
                           controller.enqueue(encoder.encode(`data: ${JSON.stringify(toolCallChunk)}\n\n`))
                         } else if (part.thought && part.text) {
-                          // NVIDIA-style: skip thought output to prevent long context issues
-                          // Model still thinks internally, we just don't emit reasoning_content
-                          console.error(`[GEMMA-PROXY] DEBUG: Skipping thought chunk (NVIDIA-style)`)
+                          // Send reasoning_content like NVIDIA does
+                          const thoughtChunk = {
+                            id: `chatcmpl-${Date.now()}`,
+                            object: 'chat.completion.chunk',
+                            created: Math.floor(Date.now() / 1000),
+                            model: requestedModel,
+                            choices: [{
+                              index: 0,
+                              delta: {
+                                reasoning_content: part.text
+                              },
+                              finish_reason: null
+                            }]
+                          }
+                          console.error(`[GEMMA-PROXY] DEBUG: Emitting reasoning_content chunk`)
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify(thoughtChunk)}
+
+`))
                         } else if (part.text && part.text.trim()) {
                           // Stream content chunks immediately instead
                           const contentChunk = {
