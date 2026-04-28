@@ -601,8 +601,8 @@ app.post('/v1/chat/completions', async (c) => {
                                   }
                                 }]
                               },
-                              finish_reason: null,
-                              logprobs: null
+                              logprobs: null,
+                              finish_reason: null
                             }]
                           }
                           toolCallIndex++
@@ -620,8 +620,8 @@ app.post('/v1/chat/completions', async (c) => {
                               delta: {
                                 reasoning_content: part.text
                               },
-                              finish_reason: null,
-                              logprobs: null
+                              logprobs: null,
+                              finish_reason: null
                             }]
                           }
                           console.error(`[GEMMA-PROXY] DEBUG: Emitting reasoning_content chunk`)
@@ -638,8 +638,8 @@ app.post('/v1/chat/completions', async (c) => {
                             choices: [{
                               index: 0,
                               delta: { content: part.text },
-                              finish_reason: null,
-                              logprobs: null
+                              logprobs: null,
+                              finish_reason: null
                             }]
                           }
                           controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(contentChunk)}\n\n`))
