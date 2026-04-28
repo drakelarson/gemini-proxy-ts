@@ -619,6 +619,7 @@ app.post('/v1/chat/completions', async (c) => {
                               index: 0,
                               delta: {
                                 content: null,
+                                reasoning: part.text,
                                 reasoning_content: part.text
                               },
                               logprobs: null,
