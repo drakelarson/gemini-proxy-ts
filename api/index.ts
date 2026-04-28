@@ -672,23 +672,23 @@ app.post('/v1/chat/completions', async (c) => {
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify(finishChunk)}\n\n`))
                         emittedFinishChunk = true
                         stopHeartbeat()
-                        // Emit [DONE] after finish chunk for tool calls
+                        
                         // Send usage chunk (NVIDIA-style)
-        const usageChunk = {
-          id: `chatcmpl-${Date.now()}`,
-          object: 'chat.completion.chunk',
-          created: Math.floor(Date.now() / 1000),
-          model: requestedModel,
-          choices: [],
-          usage: {
-            prompt_tokens: 0,
-            total_tokens: 0,
-            completion_tokens: 0
-          }
-        }
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(usageChunk)}\n\n`))
-        
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+                        const usageChunk = {
+                          id: `chatcmpl-${Date.now()}`,
+                          object: 'chat.completion.chunk',
+                          created: Math.floor(Date.now() / 1000),
+                          model: requestedModel,
+                          choices: [],
+                          usage: {
+                            prompt_tokens: 0,
+                            total_tokens: 0,
+                            completion_tokens: 0
+                          }
+                        }
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(usageChunk)}\n\n`))
+                        
+                        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
                         console.error('[GEMMA-PROXY] DEBUG: Emitted [DONE] after finish chunk')
                         emittedDone = true
                         return  // Stop processing after [DONE]
