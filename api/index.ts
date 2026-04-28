@@ -650,7 +650,9 @@ app.post('/v1/chat/completions', async (c) => {
                       
                       // Check for finishReason in this Gemini chunk
                       const chunkFinishReason = geminiChunk.candidates?.[0]?.finishReason
-                      if (chunkFinishReason && hadToolCall && !emittedFinishChunk) {
+                      if (chunkFinishReason && !emittedFinishChunk) {
+                        // Determine finish_reason based on whether we had a tool call
+                        const finalFinishReason = hadToolCall ? 'tool_calls' : 'stop'
                         // Emit final chunk with correct finish_reason
                         const finishChunk = {
                           id: `chatcmpl-${Date.now()}`,
@@ -660,13 +662,13 @@ app.post('/v1/chat/completions', async (c) => {
                           choices: [{
                             index: 0,
                             delta: {},
-                            finish_reason: 'tool_calls',
+                            finish_reason: finalFinishReason,
                             logprobs: null,
                             stop_reason: null,
                             token_ids: null
                           }]
                         }
-                        console.error(`[GEMMA-PROXY] DEBUG: Emitting finish chunk with tool_calls`)
+                        console.error(`[GEMMA-PROXY] DEBUG: Emitting finish chunk with finish_reason: '${finalFinishReason}'`)
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify(finishChunk)}\n\n`))
                         emittedFinishChunk = true
                         stopHeartbeat()
@@ -687,7 +689,7 @@ app.post('/v1/chat/completions', async (c) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(usageChunk)}\n\n`))
         
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-                        console.error('[GEMMA-PROXY] DEBUG: Emitted [DONE] after tool_calls finish')
+                        console.error('[GEMMA-PROXY] DEBUG: Emitted [DONE] after finish chunk')
                         emittedDone = true
                         return  // Stop processing after [DONE]
                       }
