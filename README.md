@@ -1,16 +1,16 @@
 # Gemma Proxy (TypeScript)
 
-OpenAI-compatible API proxy for Google Gemma/Gemma models. Deploy to Vercel Edge.
+OpenAI-compatible API proxy for Google Gemma models deployed to Vercel Edge. Optimized for Zo BYOK compatibility.
 
 ## Features
 
 - OpenAI-compatible `/v1/chat/completions` endpoint
 - Streaming and non-streaming support
-- **Tool/Function calling support**
-- Multimodal support (text + images)
+- **Tool/Function calling with multi-turn support**
 - System prompts supported
-- Gemma 4 thinking/reasoning support (`reasoning_content`)
-- Maps OpenAI parameters to Gemma equivalents
+- **Gemma 4 thinking/reasoning support** (`thinkingLevel: "high"`)
+- Hardcoded defaults: `temperature: 1.0`, `top_p: 0.9`
+- Thoughts hidden from client output (NVIDIA-style) but model sees them for better reasoning
 
 ## Quick Deploy (Vercel)
 
@@ -19,7 +19,7 @@ OpenAI-compatible API proxy for Google Gemma/Gemma models. Deploy to Vercel Edge
    git init
    git add .
    git commit -m "Initial commit"
-   gh repo create gemini-proxy-ts --public --source=. --push
+   gh repo create gemma-proxy-ts --public --source=. --push
    ```
 
 2. **Deploy to Vercel**
@@ -35,7 +35,7 @@ OpenAI-compatible API proxy for Google Gemma/Gemma models. Deploy to Vercel Edge
 export GEMINI_API_KEY=your-key-here
 
 # Run locally
-bun run dev
+bun run api/index.ts
 ```
 
 ## Usage
@@ -50,7 +50,7 @@ curl https://your-proxy.vercel.app/v1/models
 curl -X POST https://your-proxy.vercel.app/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gemini-2.5-flash",
+    "model": "gemma-4-31b-it",
     "messages": [{"role": "user", "content": "Hello"}]
   }'
 ```
@@ -60,7 +60,7 @@ curl -X POST https://your-proxy.vercel.app/v1/chat/completions \
 curl -X POST https://your-proxy.vercel.app/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gemini-2.5-flash",
+    "model": "gemma-4-31b-it",
     "messages": [{"role": "user", "content": "Hello"}],
     "stream": true
   }'
@@ -71,7 +71,7 @@ curl -X POST https://your-proxy.vercel.app/v1/chat/completions \
 curl -X POST https://your-proxy.vercel.app/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gemini-2.5-flash",
+    "model": "gemma-4-31b-it",
     "messages": [{"role": "user", "content": "What is the weather in Tokyo?"}],
     "tools": [{
       "type": "function",
@@ -96,11 +96,11 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="https://your-proxy.vercel.app/v1",
-    api_key="any"  # Doesn't matter
+    api_key="any"  # Proxy uses GEMINI_API_KEY env var
 )
 
 response = client.chat.completions.create(
-    model="gemini-2.5-flash",
+    model="gemma-4-31b-it",
     messages=[{"role": "user", "content": "Hello"}]
 )
 print(response.choices[0].message.content)
@@ -108,28 +108,31 @@ print(response.choices[0].message.content)
 
 ## Supported Models
 
-| OpenAI Model Name | Gemma Model |
-|-------------------|--------------|
-| `gemini-2.5-pro` | gemini-2.5-pro |
-| `gemini-2.5-flash` | gemini-2.5-flash |
-| `gemini-2.5-flash-lite` | gemini-2.5-flash-lite |
-| `gemini-3-flash-preview` | gemini-3-flash-preview |
-| `gemini-3.1-pro-preview` | gemini-3.1-pro-preview |
-| `gemini-1.5-pro` | gemini-1.5-pro |
-| `gemini-1.5-flash` | gemini-1.5-flash |
-| `gemini-2.0-flash` | gemini-2.0-flash |
-| `gemma-4-31b-it` | gemma-4-31b-it |
-| `gemma-4-26b-a4b-it` | gemma-4-26b-a4b-it |
-| `gemma-3-27b-it` | gemma-3-27b-it |
+| Model ID | Description |
+|----------|-------------|
+| `gemma-4-31b-it` | Gemma 4 31B (thinking enabled) |
+| `gemma-4-26b-a4b-it` | Gemma 4 26B A4B (thinking enabled) |
+| `gemma-3-27b-it` | Gemma 3 27B |
+| `gemma-3-12b-it` | Gemma 3 12B |
 
-## Parameter Mapping
+## Hardcoded Parameters
 
-| OpenAI | Gemma |
-|--------|--------|
-| `temperature` | `temperature` |
-| `top_p` | `topP` |
-| `max_tokens` | `maxOutputTokens` |
-| `stop` | `stopSequences` |
+These cannot be overridden by incoming requests:
+
+| Parameter | Value |
+|-----------|-------|
+| `temperature` | `1.0` |
+| `top_p` | `0.9` |
+
+## Thinking/Reasoning Support
+
+**Gemma 4 models** (`gemma-4-*`) automatically get `thinkingConfig: { thinkingLevel: "high" }` for better reasoning quality.
+
+**How it works:**
+- Model generates internal reasoning (thoughts)
+- Thoughts are sent back to the model in subsequent turns for context
+- Thoughts are **not** exposed to the client output (prevents Zo BYOK "invalid response" errors)
+- This matches NVIDIA's approach for reasoning models
 
 ## Get API Key
 
@@ -139,7 +142,7 @@ print(response.choices[0].message.content)
 
 ---
 
-## Gemma API Gotchas & Lessons Learned If You Want To Build Something Similar 
+## Gemma API Gotchas & Lessons Learned
 
 ### 1. URL Format for API Key
 
@@ -189,26 +192,7 @@ function stripOpenAIFields(schema: any): any {
 }
 ```
 
-### 4. Gemma 4 Thinking/Reasoning
-
-Gemma 4 models (e.g., `gemma-4-31b-it`) return reasoning as separate parts with `thought: true`:
-
-```json
-{
-  "parts": [
-    {"text": "Let me think...", "thought": true},
-    {"text": "The answer is 42."}
-  ]
-}
-```
-
-**Solution:** Separate thoughts from content:
-- Thoughts → `reasoning_content` field
-- Regular text → `content` field
-
-This matches how reasoning models like DeepSeek-R1 work.
-
-### 5. Function Calling Format
+### 4. Function Calling Format
 
 Gemma uses `functionCall` in response parts:
 
@@ -243,7 +227,9 @@ Convert to OpenAI's `tool_calls` format:
 }
 ```
 
-### 6. Tool Response Format
+**Important:** Use generated `call_xxx` IDs, not Gemini's internal IDs.
+
+### 5. Tool Response Format
 
 When returning tool results back to the model:
 
@@ -257,7 +243,7 @@ When returning tool results back to the model:
 {"role": "user", "parts": [{"functionResponse": {"name": "get_weather", "response": {"temp": 25}}}]}
 ```
 
-### 7. Finish Reason for Tool Calls
+### 6. Finish Reason for Tool Calls
 
 When model makes a tool call, `finish_reason` must be `"tool_calls"`, not `"stop"`:
 
@@ -265,7 +251,7 @@ When model makes a tool call, `finish_reason` must be `"tool_calls"`, not `"stop
 {"finish_reason": "tool_calls"}  ✓
 ```
 
-### 8. Retry on 500 Errors
+### 7. Retry on 500 Errors
 
 Gemma API occasionally returns 500 errors. Implement retry logic:
 
@@ -278,15 +264,24 @@ for (let attempt = 0; attempt < 3; attempt++) {
 }
 ```
 
+### 8. Thought Handling for Zo BYOK
+
+Zo BYOK doesn't support `reasoning_content` field. Solutions:
+
+1. **Skip thought output** - Don't send thoughts to client (current approach)
+2. **Send as regular content** - Wrap in `<thinking>` tags (alternative)
+
+The model still sees its own thoughts in subsequent turns because they're included in the conversation history sent back to Gemma.
+
 ---
 
 ## Notes
 
 - Free tier: 1,500 requests/day, 15 RPM
-- Supports multimodal input (text + images via `image_url`)
 - System prompts become `systemInstruction` in Gemma
-- Tool calls supported on both Gemma and Gemma 4 models
+- Tool calls supported on all Gemma models
+- Thoughts hidden from client but preserved in conversation history for model context
 
-## Array Wrapping
+## License
 
-When returning tool responses, ensure that the response is wrapped in an array if it is a single object. This is required by the Gemma API.
+MIT
