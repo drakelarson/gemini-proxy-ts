@@ -17,7 +17,7 @@ const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 const API_KEY = process.env.GEMINI_API_KEY
 
 if (!API_KEY) {
-  console.error('[GEMINI-PROXY] ERROR: No API key! Set GEMINI_API_KEY env var.')
+  console.error('[GEMMA-PROXY] ERROR: No API key! Set GEMINI_API_KEY env var.')
 }
 
 // Model name mapping (OpenAI-style to Gemini API names)
@@ -403,7 +403,7 @@ app.post('/v1/chat/completions', async (c) => {
       geminiRequest.generationConfig.stopSequences = Array.isArray(rest.stop) ? rest.stop.filter(Boolean) : [rest.stop]
     }
     
-    console.log(`[GEMINI-PROXY] POST /v1/chat/completions → model=${geminiModel}, stream=${stream}`)
+    console.log(`[GEMMA-PROXY] POST /v1/chat/completions → model=${geminiModel}, stream=${stream}`)
     
     // Choose endpoint based on stream flag
     // For streaming, use alt=sse to get SSE format from Gemini
@@ -412,7 +412,7 @@ app.post('/v1/chat/completions', async (c) => {
       : `generateContent?key=${API_KEY}`
     const url = `${BASE_URL}/models/${geminiModel}:${endpoint}`
     
-    console.log(`[GEMINI-PROXY] → ${url.replace(API_KEY!, '[REDACTED]')}`)
+    console.log(`[GEMMA-PROXY] → ${url.replace(API_KEY!, '[REDACTED]')}`)
     
     // Retry logic for 500 errors
     const MAX_RETRIES = 3
@@ -435,13 +435,13 @@ app.post('/v1/chat/completions', async (c) => {
       
       // Only retry on 500 (internal server error)
       if (res.status === 500 && attempt < MAX_RETRIES - 1) {
-        console.log(`[GEMINI-PROXY] 500 error, retry ${attempt + 1}/${MAX_RETRIES} after ${RETRY_DELAY_MS * (attempt + 1)}ms`)
+        console.log(`[GEMMA-PROXY] 500 error, retry ${attempt + 1}/${MAX_RETRIES} after ${RETRY_DELAY_MS * (attempt + 1)}ms`)
         await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)))
         continue
       }
       
       // Non-500 error or final attempt failed - return error immediately
-      console.error(`[GEMINI-PROXY] Error ${res.status}: ${errorText}`)
+      console.error(`[GEMMA-PROXY] Error ${res.status}: ${errorText}`)
       totalErrors++
       return c.json({ 
         error: `Gemini API error: ${res.status}`,
@@ -538,7 +538,7 @@ app.post('/v1/chat/completions', async (c) => {
                     if (!data || data === '[DONE]') continue
                     
                     // DEBUG: Log raw data string for complete visibility
-                    console.error(`[GEMINI-PROXY] DEBUG: RAW DATA: ${data}`)
+                    console.error(`[GEMMA-PROXY] DEBUG: RAW DATA: ${data}`)
                     
                     lastActivity = Date.now()
                     
@@ -549,12 +549,12 @@ app.post('/v1/chat/completions', async (c) => {
                       for (const part of parts) {
                         // FORCE log to error to ensure capture in Vercel logs
                         if (part.text && part.text.trim()) {
-                          console.error(`[GEMINI-PROXY] DEBUG: Processing part: ${JSON.stringify(part)}`)
+                          console.error(`[GEMMA-PROXY] DEBUG: Processing part: ${JSON.stringify(part)}`)
                         }
                         
                         if (part.functionCall) {
                           hadToolCall = true
-                          console.error(`[GEMINI-PROXY] DEBUG: Processing functionCall: ${JSON.stringify(part.functionCall)}`)
+                          console.error(`[GEMMA-PROXY] DEBUG: Processing functionCall: ${JSON.stringify(part.functionCall)}`)
                           const toolCallChunk = {
                             id: `chatcmpl-${Date.now()}`,
                             object: 'chat.completion.chunk',
@@ -577,12 +577,12 @@ app.post('/v1/chat/completions', async (c) => {
                             }]
                           }
                           toolCallIndex++
-                          console.error(`[GEMINI-PROXY] DEBUG: Enqueueing tool call chunk: ${JSON.stringify(toolCallChunk)}`)
+                          console.error(`[GEMMA-PROXY] DEBUG: Enqueueing tool call chunk: ${JSON.stringify(toolCallChunk)}`)
                           controller.enqueue(encoder.encode(`data: ${JSON.stringify(toolCallChunk)}\n\n`))
                         } else if (part.thought && part.text) {
                           // NVIDIA-style: skip thought output to prevent long context issues
                           // Model still thinks internally, we just don't emit reasoning_content
-                          console.error(`[GEMINI-PROXY] DEBUG: Skipping thought chunk (NVIDIA-style)`)
+                          console.error(`[GEMMA-PROXY] DEBUG: Skipping thought chunk (NVIDIA-style)`)
                         } else if (part.text && part.text.trim()) {
                           // Stream content chunks immediately instead
                           const contentChunk = {
@@ -615,19 +615,19 @@ app.post('/v1/chat/completions', async (c) => {
                             finish_reason: 'tool_calls'
                           }]
                         }
-                        console.error(`[GEMINI-PROXY] DEBUG: Emitting finish chunk with tool_calls`)
+                        console.error(`[GEMMA-PROXY] DEBUG: Emitting finish chunk with tool_calls`)
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify(finishChunk)}\n\n`))
                         emittedFinishChunk = true
                       }
                     } catch (e) {
-                      console.error('[GEMINI-PROXY] Parse error for data:', data.substring(0, 100))
+                      console.error('[GEMMA-PROXY] Parse error for data:', data.substring(0, 100))
                     }
                   }
                 }
               }
-              console.log(`[GEMINI-PROXY] ← ${Date.now() - startTime}ms (streamed)`)
+              console.log(`[GEMMA-PROXY] ← ${Date.now() - startTime}ms (streamed)`)
             } catch (e) {
-              console.error('[GEMINI-PROXY] Stream error:', e)
+              console.error('[GEMMA-PROXY] Stream error:', e)
               stopHeartbeat()
               controller.close()
             }
@@ -647,16 +647,16 @@ app.post('/v1/chat/completions', async (c) => {
       const geminiResp = await response.json()
       
       // DEBUG: Log the full Gemini response
-      console.log(`[GEMINI-PROXY] DEBUG: Gemini Response: ${JSON.stringify(geminiResp).substring(0, 500)}`)
+      console.log(`[GEMMA-PROXY] DEBUG: Gemini Response: ${JSON.stringify(geminiResp).substring(0, 500)}`)
       
       const openaiResp = convertResponse(geminiResp, requestedModel, false)
       
-      console.log(`[GEMINI-PROXY] ← ${Date.now() - startTime}ms`)
+      console.log(`[GEMMA-PROXY] ← ${Date.now() - startTime}ms`)
       return c.json(openaiResp)
     }
     
   } catch (error) {
-    console.error(`[GEMINI-PROXY] ERROR: ${error}`)
+    console.error(`[GEMMA-PROXY] ERROR: ${error}`)
     totalErrors++
     return c.json({ error: String(error) }, 502)
   }

@@ -1,6 +1,6 @@
-# Gemini Proxy (TypeScript)
+# Gemma Proxy (TypeScript)
 
-OpenAI-compatible API proxy for Google Gemini/Gemma models. Deploy to Vercel Edge.
+OpenAI-compatible API proxy for Google Gemma/Gemma models. Deploy to Vercel Edge.
 
 ## Features
 
@@ -10,7 +10,7 @@ OpenAI-compatible API proxy for Google Gemini/Gemma models. Deploy to Vercel Edg
 - Multimodal support (text + images)
 - System prompts supported
 - Gemma 4 thinking/reasoning support (`reasoning_content`)
-- Maps OpenAI parameters to Gemini equivalents
+- Maps OpenAI parameters to Gemma equivalents
 
 ## Quick Deploy (Vercel)
 
@@ -108,7 +108,7 @@ print(response.choices[0].message.content)
 
 ## Supported Models
 
-| OpenAI Model Name | Gemini Model |
+| OpenAI Model Name | Gemma Model |
 |-------------------|--------------|
 | `gemini-2.5-pro` | gemini-2.5-pro |
 | `gemini-2.5-flash` | gemini-2.5-flash |
@@ -124,7 +124,7 @@ print(response.choices[0].message.content)
 
 ## Parameter Mapping
 
-| OpenAI | Gemini |
+| OpenAI | Gemma |
 |--------|--------|
 | `temperature` | `temperature` |
 | `top_p` | `topP` |
@@ -139,7 +139,7 @@ print(response.choices[0].message.content)
 
 ---
 
-## Gemini API Gotchas & Lessons Learned If You Want To Build Something Similar 
+## Gemma API Gotchas & Lessons Learned If You Want To Build Something Similar 
 
 ### 1. URL Format for API Key
 
@@ -159,7 +159,7 @@ Non-streaming uses `?key=` (first query param). Streaming uses `&key=` after `al
 
 ### 2. Streaming Requires `alt=sse`
 
-Gemini's `streamGenerateContent` returns a JSON array by default, not SSE. To get proper SSE format:
+Gemma's `streamGenerateContent` returns a JSON array by default, not SSE. To get proper SSE format:
 
 ```
 streamGenerateContent?alt=sse&key=API_KEY
@@ -169,7 +169,7 @@ Without `alt=sse`, the response is buffered as a JSON array, which breaks real-t
 
 ### 3. Tool Schema Incompatibilities
 
-Gemini rejects several OpenAI-specific JSON schema fields:
+Gemma rejects several OpenAI-specific JSON schema fields:
 
 | Field | Reason |
 |-------|--------|
@@ -178,7 +178,7 @@ Gemini rejects several OpenAI-specific JSON schema fields:
 | `strict` | Not supported |
 | Empty string in `enum` arrays | `"enum[2]: cannot be empty"` |
 
-**Solution:** Strip these fields before sending to Gemini:
+**Solution:** Strip these fields before sending to Gemma:
 
 ```typescript
 function stripOpenAIFields(schema: any): any {
@@ -210,7 +210,7 @@ This matches how reasoning models like DeepSeek-R1 work.
 
 ### 5. Function Calling Format
 
-Gemini uses `functionCall` in response parts:
+Gemma uses `functionCall` in response parts:
 
 ```json
 {
@@ -252,7 +252,7 @@ When returning tool results back to the model:
 {"role": "tool", "tool_call_id": "xxx", "name": "get_weather", "content": "{\"temp\": 25}"}
 ```
 
-**Gemini:**
+**Gemma:**
 ```json
 {"role": "user", "parts": [{"functionResponse": {"name": "get_weather", "response": {"temp": 25}}}]}
 ```
@@ -267,7 +267,7 @@ When model makes a tool call, `finish_reason` must be `"tool_calls"`, not `"stop
 
 ### 8. Retry on 500 Errors
 
-Gemini API occasionally returns 500 errors. Implement retry logic:
+Gemma API occasionally returns 500 errors. Implement retry logic:
 
 ```typescript
 for (let attempt = 0; attempt < 3; attempt++) {
@@ -284,9 +284,9 @@ for (let attempt = 0; attempt < 3; attempt++) {
 
 - Free tier: 1,500 requests/day, 15 RPM
 - Supports multimodal input (text + images via `image_url`)
-- System prompts become `systemInstruction` in Gemini
-- Tool calls supported on both Gemini and Gemma 4 models
+- System prompts become `systemInstruction` in Gemma
+- Tool calls supported on both Gemma and Gemma 4 models
 
 ## Array Wrapping
 
-When returning tool responses, ensure that the response is wrapped in an array if it is a single object. This is required by the Gemini API.
+When returning tool responses, ensure that the response is wrapped in an array if it is a single object. This is required by the Gemma API.

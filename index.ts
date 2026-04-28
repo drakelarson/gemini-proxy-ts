@@ -6,7 +6,7 @@ const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 const API_KEY = process.env.GEMINI_API_KEY
 
 if (!API_KEY) {
-  console.error('[GEMINI-PROXY] ERROR: No API key! Set GEMINI_API_KEY env var.')
+  console.error('[GEMMA-PROXY] ERROR: No API key! Set GEMINI_API_KEY env var.')
 }
 
 const app = new Hono()
@@ -72,7 +72,7 @@ app.post('/v1/chat/completions', async (c) => {
 
     if (!response.ok) {
       const err = await response.text()
-      console.error(`[GEMINI-PROXY] ERROR ${response.status}: ${err}`)
+      console.error(`[GEMMA-PROXY] ERROR ${response.status}: ${err}`)
       return c.json({ error: `Gemini API error: ${response.status}` }, response.status)
     }
 
@@ -131,7 +131,7 @@ app.post('/v1/chat/completions', async (c) => {
       },
     })
   } catch (error) {
-    console.error(`[GEMINI-PROXY] ERROR: ${error}`)
+    console.error(`[GEMMA-PROXY] ERROR: ${error}`)
     return c.json({ error: String(error) }, 502)
   }
 })
